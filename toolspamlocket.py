@@ -1,6 +1,5 @@
 """
-Locket Friend Spam Tool - Python 3
-Yêu cầu: requests, bs4, colorama
+Locket Friend Spam Tool - Python 3 (Đã sửa: ưu tiên POST, token mới)
 """
 
 import requests
@@ -11,9 +10,12 @@ import re
 from urllib.parse import urlparse
 
 # ============================================
-# CẤU HÌNH
+# CẤU HÌNH - ĐÃ SỬA
 # ============================================
 BASE_URL = "https://api.locketcamera.com"
+SEARCH_ENDPOINT = "/users/search"           # Endpoint tìm kiếm
+FRIEND_REQUEST_ENDPOINT = "/sendFriendRequest"  # Endpoint gửi lời mời
+
 USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
@@ -34,19 +36,14 @@ class LocketSpamTool:
         self.target_username = None
 
     # ============================================
-    # HÀM LẤY TOKEN XÁC THỰC (GIẢ LẬP)
+    # HÀM LẤY TOKEN - ĐÃ THAY TOKEN MỚI
     # ============================================
     def get_auth_token(self):
-        """
-        Lấy token xác thực từ ứng dụng Locket.
-        Trong thực tế, token được lấy từ thiết bị sau khi đăng nhập.
-        Tool này giả lập token mẫu - để hoạt động cần token thật.
-        """
-        # Token giả lập - thay bằng token thật từ Fiddler/Charles
+        # Token mới của bạn
         return "eyJhbGciOiJSUzI1NiIsImtpZCI6ImVlOTA0NmVhZDJlMDUwMDAxMGVkNTA0M2I0ODNkODRiMGM1MmM3YzQiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiQm8gRGVwWmFpIiwicmV2ZW51ZUNhdEVudGl0bGVtZW50cyI6W10sImlzcyI6Imh0dHBzOi8vc2VjdXJldG9rZW4uZ29vZ2xlLmNvbS9sb2NrZXQtNDI1MmEiLCJhdWQiOiJsb2NrZXQtNDI1MmEiLCJhdXRoX3RpbWUiOjE3ODE2MjM5MjYsInVzZXJfaWQiOiJwVEcxSEhvck5ZZVFlUVFmaEV4dnBwNVJ1MDMzIiwic3ViIjoicFRHMUhIb3JOWWVRZVFRZmhFeHZwcDVSdTAzMyIsImlhdCI6MTc4MTYyMzkyNiwiZXhwIjoxNzgxNjI3NTI2LCJlbWFpbCI6Im1pbmh0aGllbjIyMDYyMDExQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZmlyZWJhc2UiOnsiaWRlbnRpdGllcyI6eyJlbWFpbCI6WyJtaW5odGhpZW4yMjA2MjAxMUBnbWFpbC5jb20iXX0sInNpZ25faW5fcHJvdmlkZXIiOiJwYXNzd29yZCJ9fQ.m6DB3oDLeLnYGCHmaPmLGxnhEkLCFk1VGOVGsrZim7LW9pwyGMj9wJBVOnxb_qrCE8A5Vb-nqClA94d8fqEjl67csDgvdJp5tIPG_V2xhl3jgDTxiUGdIBqz71UNvcgRw6Bllp9npexTwZm4MIft-gA61p2jLeAPEfFol1NSR5v2knbbAX-29jS3BhW5KPbAXhT8qKcg-s6t5XBN5GMv86ME0ndkd8PNNLm4OoGvnBAmWLQAR8Mrgq47UIjX7eYvrrfYL8L1bdhmYog98HlqsQFKABHs5T-l9gU0qIAxMN5-LZltQemD0Ycqr6iRhvii0JNEtWnnaEno8RghvKIimQ"
 
     # ============================================
-    # HÀM TÌM KIẾM USERNAME
+    # HÀM TÌM KIẾM USERNAME - ƯU TIÊN POST
     # ============================================
     def search_username(self, username_or_link):
         """
@@ -58,36 +55,48 @@ class LocketSpamTool:
             path_parts = parsed.path.split('/')
             username_or_link = path_parts[-1] if path_parts[-1] else path_parts[-2]
         
-        print(f"\n[+] Đang tìm kiếm username: {username_or_link}")
+        print(f"\n[+] Đang tìm kiếm: {username_or_link}")
         
-        # API tìm kiếm của Locket (endpoint thực tế)
-        search_url = f"{BASE_URL}/v1/users/search"
+        search_url = f"{BASE_URL}{SEARCH_ENDPOINT}"
         
-        # Headers với token
         headers = self.session.headers.copy()
         headers["Authorization"] = f"Bearer {self.get_auth_token()}"
         
+        # Tham số gửi dạng JSON body (POST)
         payload = {
             "query": username_or_link,
             "limit": 10
         }
         
         try:
+            # ==== ĐÃ SỬA: ƯU TIÊN POST NGAY TỪ ĐẦU ====
             response = self.session.post(search_url, json=payload, headers=headers, timeout=15)
+            
+            # Nếu POST bị 404, thử GET (fallback)
+            if response.status_code == 404:
+                print("[!] POST không hoạt động, thử GET...")
+                response = self.session.get(search_url, params=payload, headers=headers, timeout=15)
+            
             if response.status_code == 200:
                 data = response.json()
+                # Kiểm tra cấu trúc response
                 if data.get("users") and len(data["users"]) > 0:
-                    # Lấy user đầu tiên
                     user = data["users"][0]
                     self.target_user_id = user.get("id")
-                    self.target_username = user.get("username")
+                    self.target_username = user.get("username") or user.get("name") or "unknown"
+                    print(f"[+] Tìm thấy: {self.target_username} (ID: {self.target_user_id})")
+                    return True
+                elif data.get("data") and data["data"].get("users"):
+                    user = data["data"]["users"][0]
+                    self.target_user_id = user.get("id")
+                    self.target_username = user.get("username") or user.get("name") or "unknown"
                     print(f"[+] Tìm thấy: {self.target_username} (ID: {self.target_user_id})")
                     return True
                 else:
-                    print("[-] Không tìm thấy tài khoản")
+                    print(f"[-] Không tìm thấy. Response: {json.dumps(data, indent=2)[:300]}")
                     return False
             else:
-                print(f"[-] Lỗi API: {response.status_code} - {response.text}")
+                print(f"[-] Lỗi API: {response.status_code} - {response.text[:200]}")
                 return False
         except Exception as e:
             print(f"[-] Lỗi kết nối: {e}")
@@ -100,7 +109,7 @@ class LocketSpamTool:
         """
         Gửi 1 lời mời kết bạn đến user_id
         """
-        endpoint = f"{BASE_URL}/v1/friends/requests"
+        endpoint = f"{BASE_URL}{FRIEND_REQUEST_ENDPOINT}"
         
         headers = self.session.headers.copy()
         headers["Authorization"] = f"Bearer {self.get_auth_token()}"
@@ -112,12 +121,21 @@ class LocketSpamTool:
         
         try:
             response = self.session.post(endpoint, json=payload, headers=headers, timeout=10)
+            
+            # Nếu 404, thử endpoint /v1/friends/requests
+            if response.status_code == 404:
+                print("[!] /sendFriendRequest không tồn tại, thử /v1/friends/requests...")
+                endpoint2 = f"{BASE_URL}/v1/friends/requests"
+                response = self.session.post(endpoint2, json=payload, headers=headers, timeout=10)
+            
             if response.status_code in [200, 201, 204]:
                 return True, "Thành công"
             elif response.status_code == 429:
                 return False, "Bị giới hạn (rate limit)"
             elif response.status_code == 403:
                 return False, "Bị chặn hoặc token hết hạn"
+            elif response.status_code == 400:
+                return False, f"Bad Request - {response.text[:100]}"
             else:
                 return False, f"Lỗi {response.status_code}"
         except Exception as e:
@@ -141,11 +159,8 @@ class LocketSpamTool:
         fail_count = 0
         
         for i in range(1, count + 1):
-            # Tạo token mới cho mỗi request (giả lập)
-            self.session.headers["Authorization"] = f"Bearer {self.get_auth_token()}"
-            
             # Thêm delay ngẫu nhiên để tránh phát hiện
-            delay = random.uniform(0.3, 1.2)
+            delay = random.uniform(0.5, 1.5)
             time.sleep(delay)
             
             success, message = self.send_friend_request(self.target_user_id)
@@ -159,8 +174,8 @@ class LocketSpamTool:
             
             # Nếu bị rate limit, tăng delay
             if "rate limit" in message.lower():
-                print("[!] Phát hiện rate limit, tăng delay lên 5 giây...")
-                time.sleep(5)
+                print("[!] Phát hiện rate limit, tăng delay lên 8 giây...")
+                time.sleep(8)
         
         print(f"\n[+] Kết thúc: {success_count} thành công, {fail_count} thất bại")
 
@@ -169,8 +184,8 @@ class LocketSpamTool:
     # ============================================
     def run(self):
         print("=" * 50)
-        print("  LOCKET FRIEND SPAM TOOL v1.0")
-        print("  Chỉ dùng cho mục đích học tập")
+        print("  LOCKET FRIEND SPAM TOOL v2.1")
+        print("  (Đã sửa: ưu tiên POST, token mới)")
         print("=" * 50)
         
         # Bước 1: Nhập username hoặc link
